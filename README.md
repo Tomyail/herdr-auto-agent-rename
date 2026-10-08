@@ -3,8 +3,8 @@
 A [Herdr](https://herdr.dev) plugin that **automatically renames agent sidebar rows from their tab labels**. Name a tab, and every agent in that tab shows the same name in the sidebar — including CJK text, spaces, and mixed case, which `herdr agent rename`'s `[a-z0-9_-]` naming rules do not allow.
 
 ```
-tab label:  "接入telemetrydeck"          (typed by you, or written by a tab auto-namer)
-sidebar:    agent row  ->  "接入telemetrydeck"
+tab label:  "Fix flaky egress test"       (typed by you, or written by a tab auto-namer)
+sidebar:    agent row  ->  "Fix flaky egress test"
 ```
 
 One-way only: the tab label is the source of truth. The plugin never renames tabs, so it composes cleanly with tab auto-naming plugins such as [qu8n/herdr-automatic-rename](https://github.com/qu8n/herdr-automatic-rename) — that plugin decides tab names, this one relays them onto agent rows.
@@ -62,8 +62,8 @@ REWRITES=()
 Examples:
 
 ```bash
-FORMAT='{label} · {agent}'   # "接入telemetrydeck · pi"
-FORMAT='{space}/{label}'     # "yt-audio/接入telemetrydeck"
+FORMAT='{label} · {agent}'   # "Fix flaky egress test · pi"
+FORMAT='{space}/{label}'     # "yt-audio/Fix flaky egress test"
 
 # Strip a "context › " prefix added by herdr-automatic-rename's TAB_CONTEXT:
 REWRITES=(
