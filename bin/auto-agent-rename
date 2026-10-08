@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# auto-agent-rename - mirror the tab label onto the agent sidebar rows of that tab.
+#
+# Design: qu8n/herdr-automatic-rename owns tab naming (dirs, branches, sessions);
+# this plugin only READS labels and writes them to each agent pane's
+# display_agent metadata. It never calls tab rename, so the two plugins cannot
+# feed back into each other.
+#
+# Subcommands (invoked by herdr hooks):
+#   auto-agent-rename startup          backfill every named tab
+#   auto-agent-rename tab-renamed      HERDR_TAB_ID was renamed -> relay its label
+#   auto-agent-rename agent-detected   HERDR_PANE_ID now hosts an agent -> relay its tab label
+set -euo pipefail
+
+: "${HERDR_BIN_PATH:?auto-agent-rename: must be started by herdr as a plugin hook}"
+HERDR="$HERDR_BIN_PATH"
+
+# Optional user config: FORMAT is a template with {label} {agent} {cwd} {tab}
+# tokens; REWRITES are ordered `sed -E` expressions applied to the cleaned
+# label first. Defaults keep today's behavior (label as-is).
+FORMAT='{label}'
+REWRITES=()
+if [[ -n "${HERDR_PLUGIN_CONFIG_DIR:-}" && -f "$HERDR_PLUGIN_CONFIG_DIR/config.sh" ]]; then
+  # shellcheck disable=SC1090
+  source "$HERDR_PLUGIN_CONFIG_DIR/config.sh"
+fi
+
+log() { printf 'auto-agent-rename: %s\n' "$*" >&2; }
+
+snapshot() { "$HERDR" api snapshot; }
+
+# A label worth relaying: non-empty, not purely digits (bare tab numbers like
+# "12", and numbered prefixes like "[3] apple watch 支持" are stripped first
+# so the relayed name is the human label without the jump-key prefix).
+# Sets the cleaned label in RELAY_LABEL for the caller.
+usable_label() {
+  local label=$1
+  label=${label#"${label%%[![:space:]]*}"}   # ltrim
+  label=${label%"${label##*[![:space:]]}"}   # rtrim
+  label=${label#\[[0-9]\] }                  # strip "[N] " jump-key prefix
+  label=${label#"${label%%[![:space:]]*}"}   # ltrim again after prefix
+  RELAY_LABEL=$label
+  [[ -n "$label" && ! "$label" =~ ^[0-9]+$ ]]
+}
+
+relay_pane() {
+  local pane_id=$1 label=$2 pane
+  [[ -n "$pane_id" && -n "$label" ]] || return 0
+  pane=$(snapshot | jq -c --arg id "$pane_id" '.result.snapshot.panes[] | select(.pane_id == $id)')
+  [[ -n "$pane" ]] || return 0
+  # Skip plain terminals; only agent rows get the label.
+  jq -e 'has("agent")' <<<"$pane" >/dev/null || return 0
+  # User rewrites, then the format template.
+  local rw
+  for rw in "${REWRITES[@]}"; do
+    label=$(printf '%s' "$label" | sed -E "$rw")
+  done
+  local display=$FORMAT
+  display=${display//\{label\}/$label}
+  display=${display//\{agent\}/$(jq -r '.agent // ""' <<<"$pane")}
+  display=${display//\{cwd\}/$(basename "$(jq -r '.cwd // "."' <<<"$pane")")}
+  display=${display//\{space\}/$(jq -r --arg id "$(jq -r '.workspace_id // ""' <<<"$pane")" '.result.snapshot.workspaces[] | select(.workspace_id == $id) | .label // ""' <<<"$(snapshot)" | sed -E 's/^\[[0-9]\] //')}
+  display=${display//\{tab\}/$(jq -r '.tab_id // ""' <<<"$pane")}
+  display=$(printf '%s' "$display" | xargs)
+  [[ -n "$display" ]] || return 0
+  # Idempotent: skip when the display name already equals the target.
+  if [[ $(jq -r '.display_agent // empty' <<<"$pane") == "$display" ]]; then
+    return 0
+  fi
+  "$HERDR" pane report-metadata "$pane_id" --source auto-agent-rename --display-agent "$display" >/dev/null \
+    && log "pane $pane_id -> '$display'"
+}
+
+relay_tab() {
+  local tab_id=$1 snap label
+  snap=$(snapshot)
+  label=$(jq -r --arg id "$tab_id" '.result.snapshot.tabs[] | select(.tab_id == $id) | .label // empty' <<<"$snap")
+  usable_label "$label" || return 0
+  local cleaned=$RELAY_LABEL
+  while IFS= read -r pane_id; do
+    [[ -n "$pane_id" ]] || continue
+    relay_pane "$pane_id" "$cleaned"
+  done < <(jq -r --arg id "$tab_id" '.result.snapshot.panes[] | select(.tab_id == $id) | .pane_id' <<<"$snap")
+}
+
+case "${1:-}" in
+  startup)
+    while IFS= read -r tab_id; do
+      [[ -n "$tab_id" ]] || continue
+      relay_tab "$tab_id"
+    done < <(snapshot | jq -r '.result.snapshot.tabs[] | .tab_id')
+    ;;
+  tab-renamed)
+    : "${HERDR_TAB_ID:?auto-agent-rename: tab.renamed hook without HERDR_TAB_ID}"
+    relay_tab "$HERDR_TAB_ID"
+    ;;
+  agent-detected)
+    : "${HERDR_PANE_ID:?auto-agent-rename: pane.agent_detected hook without HERDR_PANE_ID}"
+    label=$(snapshot | jq -r --arg id "$HERDR_PANE_ID" '
+      .result.snapshot as $s |
+      ($s.panes[] | select(.pane_id == $id) | .tab_id) as $t |
+      $s.tabs[] | select(.tab_id == $t) | .label // empty')
+    usable_label "$label" && relay_pane "$HERDR_PANE_ID" "$RELAY_LABEL"
+    ;;
+  *)
+    echo "usage: auto-agent-rename startup|tab-renamed|agent-detected" >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,25 @@
+# auto-agent-rename — mirror the tab label onto the agent sidebar rows in that tab.
+#
+# One-way relay: reads tab labels (yours, or written by herdr-automatic-rename)
+# and forwards them to each agent pane's display name. Never renames tabs, so
+# it coexists with tab auto-naming plugins without feedback loops.
+id = "tomyail.auto-agent-rename"
+name = "auto-agent-rename"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Automatically rename agent sidebar rows from their tab labels."
+platforms = ["macos", "linux"]
+
+# Backfill every existing tab after server start / live handoff.
+[[startup]]
+command = ["bash", "bin/auto-agent-rename", "startup"]
+
+# The relay itself: a renamed tab re-labels its agent rows.
+[[events]]
+on = "tab.renamed"
+command = ["bash", "bin/auto-agent-rename", "tab-renamed"]
+
+# An agent detected in an already-named tab gets the label immediately.
+[[events]]
+on = "pane.agent_detected"
+command = ["bash", "bin/auto-agent-rename", "agent-detected"]
