@@ -30,7 +30,7 @@ log() { printf 'auto-agent-rename: %s\n' "$*" >&2; }
 snapshot() { "$HERDR" api snapshot; }
 
 # A label worth relaying: non-empty, not purely digits (bare tab numbers like
-# "12", and numbered prefixes like "[3] apple watch 支持" are stripped first
+# "12", and numbered prefixes like "[3] fix-auth" are stripped first
 # so the relayed name is the human label without the jump-key prefix).
 # Sets the cleaned label in RELAY_LABEL for the caller.
 usable_label() {
