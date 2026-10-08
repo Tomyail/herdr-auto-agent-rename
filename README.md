@@ -29,7 +29,7 @@ Requires herdr >= 0.9.0 and `jq` on `PATH`. Linux and macOS.
 Rules:
 
 - Labels that are purely digits (unnamed tabs showing their number) are skipped.
-- A leading jump-key prefix written by numbering plugins — `[3] apple watch 支持` — is stripped, so the sidebar shows `apple watch 支持`.
+- A leading jump-key prefix written by numbering plugins — `[3] Fix flaky test` — is stripped, so the sidebar shows `Fix flaky test`.
 - Writes are idempotent: an unchanged display name is not rewritten.
 - Plain terminal panes without an agent are never touched.
 - Display names are set via `herdr pane report-metadata --source auto-agent-rename`, i.e. display-only metadata. The agent's CLI addressable name is not modified.
